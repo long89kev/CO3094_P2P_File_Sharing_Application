@@ -8,7 +8,7 @@ from client import P2PClient
 # Page configuration
 st.set_page_config(
     page_title="P2P File Sharing",
-    page_icon="🔄",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -38,7 +38,7 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
     .client-card {
-        background-color: #e8f4f8;
+        background-color: #1d2d3d;
         padding: 1rem;
         border-radius: 8px;
         border-left: 4px solid #17a2b8;
@@ -93,10 +93,10 @@ def add_log(message):
 
 # Connection sidebar
 with st.sidebar:
-    st.markdown('<div class="main-header">🔄 P2P File Sharing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">P2P File Sharing</div>', unsafe_allow_html=True)
     st.markdown("---")
     
-    st.subheader("📡 Connection Settings")
+    st.subheader("Connection Settings")
     
     server_ip = st.text_input("Server IP", value="127.0.0.1", key="server_ip")
     server_port = st.number_input("Server Port", value=8000, min_value=1, max_value=65535, key="server_port")
@@ -126,15 +126,15 @@ with st.sidebar:
                 ok = st.session_state.client.connect_and_start()
                 if ok:
                     st.session_state.connected = True
-                    add_log("✅ Successfully connected to server")
+                    add_log("Successfully connected to server")
                     st.success("Connected!")
                     st.rerun()
                 else:
-                    add_log("❌ Failed to connect to server")
+                    add_log("Failed to connect to server")
                     st.error("Connection failed. Check logs.")
     else:
-        st.success(f"✅ Connected as **{st.session_state.client.hostname}**")
-        
+        st.success(f"Connected as **{st.session_state.client.hostname}**")
+
         if st.button("🔌 Disconnect", type="secondary"):
             if st.session_state.client:
                 st.session_state.client.shutdown()
@@ -152,32 +152,32 @@ if not st.session_state.connected:
     st.markdown('<div class="main-header">Welcome to P2P File Sharing! 🚀</div>', unsafe_allow_html=True)
     st.info("👈 Please connect to the server using the sidebar to get started.")
     
-    st.markdown("### 🌟 Features")
-    col1, col2, col3 = st.columns(3)
+    # st.markdown("### 🌟 Features")
+    # col1, col2, col3 = st.columns(3)
     
-    with col1:
-        st.markdown("""
-        #### 📤 Share Files
-        - Upload files easily
-        - Auto-publish on connect
-        - Track file availability
-        """)
+    # with col1:
+    #     st.markdown("""
+    #     #### 📤 Share Files
+    #     - Upload files easily
+    #     - Auto-publish on connect
+    #     - Track file availability
+    #     """)
     
-    with col2:
-        st.markdown("""
-        #### 🔍 Browse Network
-        - View all clients
-        - See their files
-        - Direct downloads
-        """)
+    # with col2:
+    #     st.markdown("""
+    #     #### 🔍 Browse Network
+    #     - View all clients
+    #     - See their files
+    #     - Direct downloads
+    #     """)
     
-    with col3:
-        st.markdown("""
-        #### 📊 Real-time Updates
-        - Live connection status
-        - Progress tracking
-        - Activity logs
-        """)
+    # with col3:
+    #     st.markdown("""
+    #     #### 📊 Real-time Updates
+    #     - Live connection status
+    #     - Progress tracking
+    #     - Activity logs
+    #     """)
 else:
     # Create tabs for different sections
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -194,9 +194,9 @@ else:
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.info(f"📂 Folder: `{st.session_state.client.shared_folder}`")
+            st.info(f"Folder: `{st.session_state.client.shared_folder}`")
         with col2:
-            if st.button("🔄 Refresh Files", key="refresh_files"):
+            if st.button("Refresh Files", key="refresh_files"):
                 st.rerun()
         
         st.markdown("---")
@@ -249,7 +249,7 @@ else:
                                 else:
                                     st.markdown(f"✓ **{owner}** (You)")
             else:
-                st.warning("📭 No files in your shared folder yet. Upload files in the '📤 Upload Files' tab!")
+                st.warning("No files in your shared folder yet. Upload files in the '📤 Upload Files' tab!")
         except Exception as e:
             st.error(f"Error listing files: {e}")
     
