@@ -39,18 +39,30 @@ Client B → Client A: <binary file data>
 
 ### Requirements
 - Python 3.6 or higher
-- No external dependencies (uses only standard library)
+- No external dependencies for basic functionality (uses only standard library)
+- **Optional**: `tkinterdnd2` for drag-and-drop file publishing in GUI
 
 ### Setup
 ```bash
 # Clone or download the project
 cd P2P_FileSharing
 
+# Install optional drag-and-drop support (recommended for GUI)
+pip install tkinterdnd2
+
 # Create shared folders for testing (optional)
 mkdir -p shared_files/client1
 mkdir -p shared_files/client2
 mkdir -p shared_files/client3
 ```
+
+### Optional: Enable Drag-and-Drop in GUI
+To enable drag-and-drop functionality for easy file publishing:
+```bash
+pip install tkinterdnd2
+```
+
+If tkinterdnd2 is not installed, the GUI will still work but without drag-and-drop support.
 ## Usage Guide
 
 ### 1. Start the Central Server
@@ -71,11 +83,23 @@ python client_gui.py
 In the GUI:
 - Enter Server IP, Server Port, your Hostname, and your P2P Port
 - Click Connect to REGISTER and start your P2P listener
-- Use "Publish New File..." to share files
-- Type a filename and click Fetch to see peers
+- Use "Publish New File..." to share files, or drag-and-drop files directly onto the "My Shared Files" area
+- Click "🔄 Check Availability" to see which other clients have your files (shows count next to filename)
+- Click "Refresh" in the "Connected Clients" section to see all active clients
+- Click on a client to view their shared files
+- Double-click on a file in "Client's Files" to auto-fetch it
+- Right-click on any file in "My Shared Files" to check which clients have it
+- Type a filename and click Fetch to see all peers with that file
 - Select a peer and click "Download from Selected Peer" to download
 
 The System Log panel shows all actions and responses.
+
+**New GUI Features:**
+- **Auto-load**: Files in your shared folder are automatically published when you connect
+- **Drag-and-Drop**: Drop files from your file manager directly onto the shared files list to publish (requires tkinterdnd2)
+- **File Availability**: See which files are available from multiple clients (shown as "[N clients]")
+- **Client Browsing**: Browse and view files from other connected clients
+- **Right-click menu**: Check file availability across the network
 
 ### 3. Start Client(s) (CLI)
 

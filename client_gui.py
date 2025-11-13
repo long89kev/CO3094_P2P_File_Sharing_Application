@@ -3,6 +3,14 @@ import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, simpledialog, messagebox
 
+# Try to import tkinterdnd2 for drag-and-drop support
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    HAS_DND = True
+except ImportError:
+    HAS_DND = False
+    print("tkinterdnd2 not available. Drag-and-drop disabled. Install with: pip install tkinterdnd2")
+
 from client import P2PClient
 
 class TextLogger:
@@ -19,19 +27,25 @@ class TextLogger:
         self.text.see(tk.END)
         self.text.configure(state=tk.DISABLED)
 
-class ClientGUI(tk.Tk):
+class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("P2P File Sharing Client")
-        self.geometry("1400x650")
+        self.geometry("1400x700")
 
         self.client: P2PClient | None = None
+        self.file_owners_cache = {}  # Cache to store which clients have which files
 
         self._build_connection_panel()
         self._build_main_area()
         self._build_log_panel()
         self.status_var.set("Disconnected")
         self._set_connected(False)
+        
+        # Setup drag and drop if available
+        if HAS_DND:
+            self._setup_drag_drop()
+            self.logger("Drag-and-drop enabled: Drop files onto 'My Shared Files' area to publish")
 
     def _build_connection_panel(self):
         frame = ttk.Frame(self)
@@ -68,9 +82,21 @@ class ClientGUI(tk.Tk):
         left = ttk.Frame(main)
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        ttk.Label(left, text="My Shared Files:").pack(anchor=tk.W)
-        self.shared_list = tk.Listbox(left, height=20)
+        left_header = ttk.Frame(left)
+        left_header.pack(fill=tk.X)
+        ttk.Label(left_header, text="My Shared Files:").pack(side=tk.LEFT)
+        if HAS_DND:
+            ttk.Label(left_header, text="(Drop files here)", font=('TkDefaultFont', 8, 'italic')).pack(side=tk.LEFT, padx=8)
+        ttk.Button(left_header, text="🔄 Check Availability", command=self._refresh_file_owners_cache).pack(side=tk.RIGHT)
+        
+        # Frame to hold the listbox for drag-and-drop
+        self.shared_list_frame = ttk.Frame(left)
+        self.shared_list_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.shared_list = tk.Listbox(self.shared_list_frame, height=20)
         self.shared_list.pack(fill=tk.BOTH, expand=True)
+        self.shared_list.bind('<Button-3>', self._on_shared_file_right_click)  # Right-click for context menu
+        
         ttk.Button(left, text="Publish New File...", command=self._on_publish).pack(anchor=tk.W, pady=6)
 
         # Middle panel for client list
@@ -101,7 +127,7 @@ class ClientGUI(tk.Tk):
         ttk.Entry(top_row, width=40, textvariable=self.fetch_name_var).pack(side=tk.LEFT, padx=6)
         ttk.Button(top_row, text="Fetch", command=self._on_fetch).pack(side=tk.LEFT)
 
-        ttk.Label(right, text="Search Results:").pack(anchor=tk.W, pady=(8,0))
+        ttk.Label(right, text="Search Results (Peers with file):").pack(anchor=tk.W, pady=(8,0))
         self.results_list = tk.Listbox(right, height=14)
         self.results_list.pack(fill=tk.BOTH, expand=True)
 
@@ -194,6 +220,11 @@ class ClientGUI(tk.Tk):
         idx = sel[0]
         line = self.results_list.get(idx)
         try:
+            # Parse format: "[1] hostname (ip:port)"
+            if line.startswith('['):
+                # Remove the number prefix
+                line = line.split(']', 1)[1].strip()
+            
             host_part = line.split(" (")[0].strip()
             addr_part = line.split("(")[-1].rstrip(")").strip()
             ip, port_s = addr_part.split(":")
@@ -217,6 +248,8 @@ class ClientGUI(tk.Tk):
                 except Exception:
                     pass
                 self._refresh_shared_list()
+                # Update the file owners cache
+                self._refresh_file_owners_cache()
             else:
                 self.logger(f"Failed to download '{fname}' from {host_part}")
         threading.Thread(target=_dl_job, daemon=True).start()
@@ -264,6 +297,103 @@ class ClientGUI(tk.Tk):
         # Auto-fill the fetch field and trigger fetch
         self.fetch_name_var.set(filename)
         self._on_fetch()
+    
+    def _setup_drag_drop(self):
+        """Setup drag and drop for file publishing"""
+        if not HAS_DND:
+            return
+        
+        # Register the listbox and frame for drop events
+        self.shared_list.drop_target_register(DND_FILES)
+        self.shared_list.dnd_bind('<<Drop>>', self._on_drop)
+        
+        self.shared_list_frame.drop_target_register(DND_FILES)
+        self.shared_list_frame.dnd_bind('<<Drop>>', self._on_drop)
+    
+    def _on_drop(self, event):
+        """Handle file drop event"""
+        if not self.client or not self.client.registered:
+            messagebox.showwarning("Not Connected", "Please connect to the server first")
+            return
+        
+        # Parse the dropped files (tkinterdnd2 format can be tricky)
+        files = self._parse_drop_files(event.data)
+        
+        if not files:
+            self.logger("No valid files dropped")
+            return
+        
+        # Publish each dropped file
+        for filepath in files:
+            if os.path.isfile(filepath):
+                filename = os.path.basename(filepath)
+                self.logger(f"Publishing dropped file: {filename}")
+                
+                def _pub_job(fpath=filepath, fname=filename):
+                    ok = self.client.publish_file(fpath, fname)
+                    if ok:
+                        self._refresh_shared_list()
+                threading.Thread(target=_pub_job, daemon=True).start()
+            else:
+                self.logger(f"Skipping non-file: {filepath}")
+    
+    def _parse_drop_files(self, data):
+        """Parse dropped files from tkinterdnd2 data"""
+        files = []
+        # Handle different formats
+        if data.startswith('{'):
+            # Brace-enclosed format
+            current = ""
+            in_braces = False
+            for char in data:
+                if char == '{':
+                    in_braces = True
+                    current = ""
+                elif char == '}':
+                    in_braces = False
+                    if current:
+                        files.append(current)
+                        current = ""
+                elif in_braces:
+                    current += char
+        else:
+            # Space-separated format
+            files = data.split()
+        
+        return [f.strip() for f in files if f.strip()]
+    
+    def _on_shared_file_right_click(self, event):
+        """Show context menu for shared files with file owners info"""
+        if not self.client or not self.client.registered:
+            return
+        
+        # Get the clicked item
+        index = self.shared_list.nearest(event.y)
+        if index < 0:
+            return
+        
+        self.shared_list.selection_clear(0, tk.END)
+        self.shared_list.selection_set(index)
+        filename = self.shared_list.get(index)
+        
+        # Create context menu
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label=f"File: {filename}", state=tk.DISABLED)
+        menu.add_separator()
+        
+        # Check which clients have this file
+        def _check_owners():
+            peers = self.client.fetch_peers(filename)
+            if peers:
+                owners = [p['hostname'] for p in peers]
+                self.file_owners_cache[filename] = owners
+                info = f"Available on: {', '.join(owners)}"
+            else:
+                info = "Only you have this file"
+            messagebox.showinfo(f"File Info: {filename}", info)
+        
+        menu.add_command(label="Check who has this file", command=_check_owners)
+        menu.post(event.x_root, event.y_root)
 
     def _set_connected(self, ok: bool):
         if ok:
@@ -281,17 +411,53 @@ class ClientGUI(tk.Tk):
             for item in sorted(os.listdir(self.client.shared_folder)):
                 p = os.path.join(self.client.shared_folder, item)
                 if os.path.isfile(p):
-                    self.shared_list.insert(tk.END, item)
+                    # Check if we have cached info about who has this file
+                    if item in self.file_owners_cache:
+                        owners = self.file_owners_cache[item]
+                        if len(owners) > 1:
+                            # Multiple clients have this file
+                            display_text = f"{item} [{len(owners)} clients]"
+                        else:
+                            display_text = item
+                    else:
+                        display_text = item
+                    self.shared_list.insert(tk.END, display_text)
         except Exception:
             pass
+    
+    def _refresh_file_owners_cache(self):
+        """Refresh the cache of which clients have which files"""
+        if not self.client or not self.client.registered:
+            return
+        
+        def _refresh_job():
+            try:
+                for item in os.listdir(self.client.shared_folder):
+                    p = os.path.join(self.client.shared_folder, item)
+                    if os.path.isfile(p):
+                        peers = self.client.fetch_peers(item)
+                        if peers:
+                            self.file_owners_cache[item] = [p['hostname'] for p in peers]
+                self.shared_list.after(0, self._refresh_shared_list)
+            except Exception as e:
+                self.logger(f"Error refreshing file owners: {e}")
+        
+        threading.Thread(target=_refresh_job, daemon=True).start()
 
     def _fill_results(self, peers):
         self.results_list.delete(0, tk.END)
         if not peers:
             self.results_list.insert(tk.END, "(no peers found)")
             return
-        for p in peers:
-            self.results_list.insert(tk.END, f"{p['hostname']} ({p['ip']}:{p['port']})")
+        
+        # Update cache with this information
+        fname = self.fetch_name_var.get().strip()
+        if fname:
+            self.file_owners_cache[fname] = [p['hostname'] for p in peers]
+        
+        # Display peers with better formatting
+        for i, p in enumerate(peers, 1):
+            self.results_list.insert(tk.END, f"[{i}] {p['hostname']} ({p['ip']}:{p['port']})")
     
     def _fill_client_list(self, clients):
         """Fill the client list with active clients"""
