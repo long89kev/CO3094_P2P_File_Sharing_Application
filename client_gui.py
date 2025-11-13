@@ -505,7 +505,7 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
             if isinstance(file_info, dict):
                 filename = file_info['filename']
                 is_owner = file_info.get('is_owner', False)
-                owner_mark = " ⭐" if is_owner else ""
+                owner_mark = " * ORIGINAL" if is_owner else ""
                 self.client_files_list.insert(tk.END, f"{filename}{owner_mark}")
             else:
                 # Backward compatibility - just a filename string
