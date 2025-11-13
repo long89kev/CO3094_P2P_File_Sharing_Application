@@ -7,8 +7,7 @@ class CentralServer:
     def __init__(self, port):
         self.port = port
         self.clients = {}  # {hostname: {'ip': '...', 'port': ..., 'socket': ..., 'active': True}}
-        # Updated structure: {filename: {'owner': 'client1', 'holders': [hostname1, hostname2, ...]}}
-        self.files = {}    
+        self.files = {}    # {filename: [hostname1, hostname2, ...]}
         self.lock = threading.Lock()  # Thread-safe access to shared data
         self.server_socket = None
         
@@ -125,36 +124,25 @@ class CentralServer:
                 return "PUBLISH_FAIL Client not registered"
             
             if filename not in self.files:
-                # First time this file is published - set owner
-                self.files[filename] = {
-                    'owner': hostname,
-                    'holders': [hostname]
-                }
-                print(f"[{self.get_timestamp()}] File '{filename}' published by '{hostname}' (ORIGINAL)")
-            else:
-                # File already exists, add this client as a holder if not already
-                if hostname not in self.files[filename]['holders']:
-                    self.files[filename]['holders'].append(hostname)
-                    print(f"[{self.get_timestamp()}] File '{filename}' published by '{hostname}' (owner: {self.files[filename]['owner']})")
-                else:
-                    print(f"[{self.get_timestamp()}] File '{filename}' re-published by '{hostname}'")
+                self.files[filename] = []
             
+            if hostname not in self.files[filename]:
+                self.files[filename].append(hostname)
+            
+        print(f"[{self.get_timestamp()}] File '{filename}' published by '{hostname}'")
         return "PUBLISH_SUCCESS"
     
     def handle_fetch(self, filename):
         with self.lock:
-            if filename not in self.files or len(self.files[filename]['holders']) == 0:
+            if filename not in self.files or len(self.files[filename]) == 0:
                 return "FETCH_NOT_FOUND"
             
-            # Build list of peers with the file (include owner info)
-            owner = self.files[filename]['owner']
+            # Build list of peers with the file
             peers = []
-            for hostname in self.files[filename]['holders']:
+            for hostname in self.files[filename]:
                 if hostname in self.clients and self.clients[hostname]['active']:
                     client = self.clients[hostname]
-                    # Format: ip:port:hostname:owner_flag (1 if owner, 0 if not)
-                    owner_flag = "1" if hostname == owner else "0"
-                    peers.append(f"{client['ip']}:{client['port']}:{hostname}:{owner_flag}")
+                    peers.append(f"{client['ip']}:{client['port']}:{hostname}")
             
             if not peers:
                 return "FETCH_NOT_FOUND"
@@ -181,17 +169,15 @@ class CentralServer:
             return "LIST_CLIENTS_OK " + " ".join(active_clients)
     
     def handle_discover_client(self, client_hostname):
-        """Return list of files shared by a specific client (with owner info)"""
+        """Return list of files shared by a specific client"""
         with self.lock:
             if client_hostname not in self.clients:
                 return "DISCOVER_CLIENT_NOT_FOUND"
             
-            # Format: filename:owner_flag (1 if this client is owner, 0 if not)
             files = []
-            for filename, file_info in self.files.items():
-                if client_hostname in file_info['holders']:
-                    owner_flag = "1" if client_hostname == file_info['owner'] else "0"
-                    files.append(f"{filename}:{owner_flag}")
+            for filename, hosts in self.files.items():
+                if client_hostname in hosts:
+                    files.append(filename)
             
             if not files:
                 return "DISCOVER_CLIENT_OK"
@@ -246,10 +232,9 @@ class CentralServer:
             
             print(f"\nFiles shared by '{hostname}':")
             found = False
-            for filename, file_info in self.files.items():
-                if hostname in file_info['holders']:
-                    owner_mark = " (ORIGINAL)" if hostname == file_info['owner'] else f" (from {file_info['owner']})"
-                    print(f"  - {filename}{owner_mark}")
+            for filename, hosts in self.files.items():
+                if hostname in hosts:
+                    print(f"  - {filename}")
                     found = True
             
             if not found:
@@ -284,10 +269,9 @@ class CentralServer:
             if not self.files:
                 print("  (none)")
             else:
-                for filename, file_info in self.files.items():
-                    active_hosts = [h for h in file_info['holders'] if h in self.clients and self.clients[h]['active']]
-                    owner = file_info['owner']
-                    print(f"  - {filename} (owner: {owner}, available on: {', '.join(active_hosts) if active_hosts else 'none'})")
+                for filename, hosts in self.files.items():
+                    active_hosts = [h for h in hosts if h in self.clients and self.clients[h]['active']]
+                    print(f"  - {filename} (available on: {', '.join(active_hosts) if active_hosts else 'none'})")
             print()
     
     def get_timestamp(self):

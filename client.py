@@ -372,22 +372,8 @@ class P2PClient:
             peers = []
             for p in parts[1:]:
                 s = p.split(":")
-                # Format: ip:port:hostname:owner_flag
-                if len(s) >= 4:
-                    peers.append({
-                        "ip": s[0], 
-                        "port": int(s[1]), 
-                        "hostname": s[2],
-                        "is_owner": s[3] == "1"
-                    })
-                elif len(s) >= 3:
-                    # Backward compatibility
-                    peers.append({
-                        "ip": s[0], 
-                        "port": int(s[1]), 
-                        "hostname": s[2],
-                        "is_owner": False
-                    })
+                if len(s) >= 3:
+                    peers.append({"ip": s[0], "port": int(s[1]), "hostname": s[2]})
             return peers
         except Exception:
             return []
@@ -408,7 +394,7 @@ class P2PClient:
             return []
     
     def get_client_files(self, client_hostname):
-        """Get list of files shared by a specific client with owner info"""
+        """Get list of files shared by a specific client"""
         try:
             message = f"DISCOVER_CLIENT {client_hostname}"
             self.server_socket.send(message.encode('utf-8'))
@@ -418,22 +404,8 @@ class P2PClient:
             if not response.startswith("DISCOVER_CLIENT_OK"):
                 return []
             parts = response.split()
-            # parts[0] is "DISCOVER_CLIENT_OK", rest are filename:owner_flag pairs
-            files = []
-            for item in parts[1:] if len(parts) > 1 else []:
-                file_parts = item.split(":")
-                if len(file_parts) >= 2:
-                    files.append({
-                        "filename": file_parts[0],
-                        "is_owner": file_parts[1] == "1"
-                    })
-                else:
-                    # Backward compatibility
-                    files.append({
-                        "filename": item,
-                        "is_owner": False
-                    })
-            return files
+            # parts[0] is "DISCOVER_CLIENT_OK", rest are filenames
+            return parts[1:] if len(parts) > 1 else []
         except Exception as e:
             self._log(f"Error getting client files: {e}")
             return []
