@@ -23,7 +23,7 @@ class ClientGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("P2P File Sharing Client")
-        self.geometry("1000x650")
+        self.geometry("1400x650")
 
         self.client: P2PClient | None = None
 
@@ -72,6 +72,24 @@ class ClientGUI(tk.Tk):
         self.shared_list = tk.Listbox(left, height=20)
         self.shared_list.pack(fill=tk.BOTH, expand=True)
         ttk.Button(left, text="Publish New File...", command=self._on_publish).pack(anchor=tk.W, pady=6)
+
+        # Middle panel for client list
+        middle = ttk.Frame(main)
+        middle.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
+        
+        client_header = ttk.Frame(middle)
+        client_header.pack(fill=tk.X)
+        ttk.Label(client_header, text="Connected Clients:").pack(side=tk.LEFT)
+        ttk.Button(client_header, text="Refresh", command=self._on_get_clients).pack(side=tk.RIGHT, padx=4)
+        
+        self.client_list = tk.Listbox(middle, height=10)
+        self.client_list.pack(fill=tk.BOTH, expand=True, pady=4)
+        self.client_list.bind('<<ListboxSelect>>', self._on_client_selected)
+        
+        ttk.Label(middle, text="Client's Files:").pack(anchor=tk.W, pady=(8,0))
+        self.client_files_list = tk.Listbox(middle, height=10)
+        self.client_files_list.pack(fill=tk.BOTH, expand=True)
+        self.client_files_list.bind('<Double-Button-1>', self._on_client_file_double_click)
 
         right = ttk.Frame(main)
         right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -202,6 +220,50 @@ class ClientGUI(tk.Tk):
             else:
                 self.logger(f"Failed to download '{fname}' from {host_part}")
         threading.Thread(target=_dl_job, daemon=True).start()
+    
+    def _on_get_clients(self):
+        """Get list of all connected clients from server"""
+        if not self.client or not self.client.registered:
+            messagebox.showwarning("Not Connected", "Please connect to the server first")
+            return
+        
+        def _get_clients_job():
+            clients = self.client.get_client_list()
+            self.client_list.after(0, self._fill_client_list, clients)
+        threading.Thread(target=_get_clients_job, daemon=True).start()
+    
+    def _on_client_selected(self, event):
+        """Handle client selection from the list"""
+        if not self.client or not self.client.registered:
+            return
+        
+        sel = self.client_list.curselection()
+        if not sel:
+            return
+        
+        idx = sel[0]
+        client_hostname = self.client_list.get(idx)
+        
+        def _get_files_job():
+            files = self.client.get_client_files(client_hostname)
+            self.client_files_list.after(0, self._fill_client_files, files, client_hostname)
+        threading.Thread(target=_get_files_job, daemon=True).start()
+    
+    def _on_client_file_double_click(self, event):
+        """Handle double-click on a file in client's file list"""
+        if not self.client or not self.client.registered:
+            return
+        
+        sel = self.client_files_list.curselection()
+        if not sel:
+            return
+        
+        idx = sel[0]
+        filename = self.client_files_list.get(idx)
+        
+        # Auto-fill the fetch field and trigger fetch
+        self.fetch_name_var.set(filename)
+        self._on_fetch()
 
     def _set_connected(self, ok: bool):
         if ok:
@@ -230,6 +292,30 @@ class ClientGUI(tk.Tk):
             return
         for p in peers:
             self.results_list.insert(tk.END, f"{p['hostname']} ({p['ip']}:{p['port']})")
+    
+    def _fill_client_list(self, clients):
+        """Fill the client list with active clients"""
+        self.client_list.delete(0, tk.END)
+        self.client_files_list.delete(0, tk.END)
+        if not clients:
+            self.client_list.insert(tk.END, "(no clients found)")
+            return
+        for client_hostname in clients:
+            # Don't show our own hostname
+            if self.client and client_hostname != self.client.hostname:
+                self.client_list.insert(tk.END, client_hostname)
+    
+    def _fill_client_files(self, files, client_hostname):
+        """Fill the client files list with files from selected client"""
+        self.client_files_list.delete(0, tk.END)
+        if files is None:
+            self.client_files_list.insert(tk.END, f"(client '{client_hostname}' not found)")
+            return
+        if not files:
+            self.client_files_list.insert(tk.END, "(no files shared)")
+            return
+        for filename in files:
+            self.client_files_list.insert(tk.END, filename)
 
 
 if __name__ == "__main__":

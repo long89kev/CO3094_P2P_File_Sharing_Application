@@ -12,6 +12,13 @@ class Protocol:
     FETCH_OK = "FETCH_OK"
     FETCH_NOT_FOUND = "FETCH_NOT_FOUND"
     
+    LIST_CLIENTS = "LIST_CLIENTS"
+    LIST_CLIENTS_OK = "LIST_CLIENTS_OK"
+    
+    DISCOVER_CLIENT = "DISCOVER_CLIENT"
+    DISCOVER_CLIENT_OK = "DISCOVER_CLIENT_OK"
+    DISCOVER_CLIENT_NOT_FOUND = "DISCOVER_CLIENT_NOT_FOUND"
+    
     # Peer-to-Peer Protocol Messages
     DOWNLOAD = "DOWNLOAD"
     FILESIZE = "FILESIZE"
@@ -38,6 +45,14 @@ class ProtocolHelper:
     @staticmethod
     def create_fetch_message(filename):
         return f"{Protocol.FETCH} {filename}"
+    
+    @staticmethod
+    def create_list_clients_message():
+        return f"{Protocol.LIST_CLIENTS}"
+    
+    @staticmethod
+    def create_discover_client_message(hostname):
+        return f"{Protocol.DISCOVER_CLIENT} {hostname}"
     
     @staticmethod
     def create_download_message(filename):

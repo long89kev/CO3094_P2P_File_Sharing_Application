@@ -80,6 +80,16 @@ class CentralServer:
                     filename = parts[1]
                     response = self.handle_fetch(filename)
                     
+                elif command == "LIST_CLIENTS":
+                    response = self.handle_list_clients()
+                    
+                elif command == "DISCOVER_CLIENT":
+                    if len(parts) < 2:
+                        response = "DISCOVER_CLIENT_NOT_FOUND"
+                    else:
+                        client_hostname = parts[1]
+                        response = self.handle_discover_client(client_hostname)
+                    
                 else:
                     response = "UNKNOWN_COMMAND"
                 
@@ -144,6 +154,35 @@ class CentralServer:
             if hostname in self.clients:
                 self.clients[hostname]['active'] = False
                 print(f"[{self.get_timestamp()}] Client '{hostname}' disconnected")
+    
+    def handle_list_clients(self):
+        """Return list of all active clients"""
+        with self.lock:
+            active_clients = []
+            for hostname, info in self.clients.items():
+                if info['active']:
+                    active_clients.append(hostname)
+            
+            if not active_clients:
+                return "LIST_CLIENTS_OK"
+            
+            return "LIST_CLIENTS_OK " + " ".join(active_clients)
+    
+    def handle_discover_client(self, client_hostname):
+        """Return list of files shared by a specific client"""
+        with self.lock:
+            if client_hostname not in self.clients:
+                return "DISCOVER_CLIENT_NOT_FOUND"
+            
+            files = []
+            for filename, hosts in self.files.items():
+                if client_hostname in hosts:
+                    files.append(filename)
+            
+            if not files:
+                return "DISCOVER_CLIENT_OK"
+            
+            return "DISCOVER_CLIENT_OK " + " ".join(files)
     
     def server_command_interface(self):
         while True:

@@ -77,6 +77,8 @@ class P2PClient:
             if "REGISTER_SUCCESS" in response:
                 self.registered = True
                 self._log(f"Successfully registered as '{self.hostname}'")
+                # Auto-publish all files in shared folder
+                self.auto_publish_files()
                 return True
             else:
                 self._log("Registration failed")
@@ -238,6 +240,23 @@ class P2PClient:
             self._log(f"Error publishing file: {e}")
             return False
     
+    def auto_publish_files(self):
+        """Automatically publish all files in the shared folder"""
+        try:
+            files = os.listdir(self.shared_folder)
+            for filename in files:
+                filepath = os.path.join(self.shared_folder, filename)
+                if os.path.isfile(filepath):
+                    message = f"PUBLISH {filename} {self.hostname}"
+                    self.server_socket.send(message.encode('utf-8'))
+                    response = self.server_socket.recv(self.BUFFER_SIZE).decode('utf-8')
+                    if response.startswith("PUBLISH_SUCCESS"):
+                        self._log(f"Auto-published: {filename}")
+                    else:
+                        self._log(f"Failed to auto-publish: {filename}")
+        except Exception as e:
+            self._log(f"Error auto-publishing files: {e}")
+    
     def fetch_file(self, filename):
         try:
             # Send fetch request to server
@@ -357,6 +376,38 @@ class P2PClient:
                     peers.append({"ip": s[0], "port": int(s[1]), "hostname": s[2]})
             return peers
         except Exception:
+            return []
+    
+    def get_client_list(self):
+        """Get list of all active clients from server"""
+        try:
+            message = "LIST_CLIENTS"
+            self.server_socket.send(message.encode('utf-8'))
+            response = self.server_socket.recv(self.BUFFER_SIZE).decode('utf-8').strip()
+            if not response.startswith("LIST_CLIENTS_OK"):
+                return []
+            parts = response.split()
+            # parts[0] is "LIST_CLIENTS_OK", rest are client hostnames
+            return parts[1:] if len(parts) > 1 else []
+        except Exception as e:
+            self._log(f"Error getting client list: {e}")
+            return []
+    
+    def get_client_files(self, client_hostname):
+        """Get list of files shared by a specific client"""
+        try:
+            message = f"DISCOVER_CLIENT {client_hostname}"
+            self.server_socket.send(message.encode('utf-8'))
+            response = self.server_socket.recv(self.BUFFER_SIZE).decode('utf-8').strip()
+            if response.startswith("DISCOVER_CLIENT_NOT_FOUND"):
+                return None
+            if not response.startswith("DISCOVER_CLIENT_OK"):
+                return []
+            parts = response.split()
+            # parts[0] is "DISCOVER_CLIENT_OK", rest are filenames
+            return parts[1:] if len(parts) > 1 else []
+        except Exception as e:
+            self._log(f"Error getting client files: {e}")
             return []
 
     def download_from_peer_with_progress(self, peer_ip, peer_port, filename, progress_cb=None):
