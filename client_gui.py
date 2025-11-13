@@ -292,7 +292,10 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
             return
         
         idx = sel[0]
-        filename = self.client_files_list.get(idx)
+        filename_display = self.client_files_list.get(idx)
+        
+        # Remove the owner mark if present
+        filename = filename_display.replace(" * ORIGINAL", "").strip()
         
         # Auto-fill the fetch field and trigger fetch
         self.fetch_name_var.set(filename)
@@ -374,7 +377,10 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
         
         self.shared_list.selection_clear(0, tk.END)
         self.shared_list.selection_set(index)
-        filename = self.shared_list.get(index)
+        filename_display = self.shared_list.get(index)
+        
+        # Remove any extra info (like "[N clients]")
+        filename = filename_display.split('[')[0].strip()
         
         # Create context menu
         menu = tk.Menu(self, tearoff=0)
@@ -385,9 +391,22 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
         def _check_owners():
             peers = self.client.fetch_peers(filename)
             if peers:
-                owners = [p['hostname'] for p in peers]
-                self.file_owners_cache[filename] = owners
-                info = f"Available on: {', '.join(owners)}"
+                # Find the original owner
+                original_owner = None
+                holders = []
+                for p in peers:
+                    holders.append(p['hostname'])
+                    if p.get('is_owner', False):
+                        original_owner = p['hostname']
+                
+                self.file_owners_cache[filename] = holders
+                
+                # Build info message
+                info_parts = []
+                if original_owner:
+                    info_parts.append(f"Original owner: {original_owner}")
+                info_parts.append(f"Available on: {', '.join(holders)}")
+                info = "\n".join(info_parts)
             else:
                 info = "Only you have this file"
             messagebox.showinfo(f"File Info: {filename}", info)
@@ -455,9 +474,10 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
         if fname:
             self.file_owners_cache[fname] = [p['hostname'] for p in peers]
         
-        # Display peers with better formatting
+        # Display peers with better formatting, showing who is the original owner
         for i, p in enumerate(peers, 1):
-            self.results_list.insert(tk.END, f"[{i}] {p['hostname']} ({p['ip']}:{p['port']})")
+            owner_mark = " * ORIGINAL" if p.get('is_owner', False) else ""
+            self.results_list.insert(tk.END, f"[{i}] {p['hostname']}{owner_mark} ({p['ip']}:{p['port']})")
     
     def _fill_client_list(self, clients):
         """Fill the client list with active clients"""
@@ -480,8 +500,16 @@ class ClientGUI(TkinterDnD.Tk if HAS_DND else tk.Tk):
         if not files:
             self.client_files_list.insert(tk.END, "(no files shared)")
             return
-        for filename in files:
-            self.client_files_list.insert(tk.END, filename)
+        for file_info in files:
+            # Handle both dict format (new) and string format (old)
+            if isinstance(file_info, dict):
+                filename = file_info['filename']
+                is_owner = file_info.get('is_owner', False)
+                owner_mark = " ⭐" if is_owner else ""
+                self.client_files_list.insert(tk.END, f"{filename}{owner_mark}")
+            else:
+                # Backward compatibility - just a filename string
+                self.client_files_list.insert(tk.END, file_info)
 
 
 if __name__ == "__main__":
